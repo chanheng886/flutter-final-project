@@ -1,16 +1,21 @@
 services:
   app:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
+
+    container_name: khmer-ocr-backend
+
     ports:
       - "8080:8080"
+
+    env_file:
+      - .env
+
     environment:
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
-      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
-      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-    depends_on:
-      postgres-db:
-        condition: service_healthy
+
+    volumes:
+      - ./uploads:/app/uploads
+
     restart: unless-stopped
