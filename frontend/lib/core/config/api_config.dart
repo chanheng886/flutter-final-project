@@ -1,3 +1,4 @@
 class ApiConfig {
-  static const baseUrl = "http://localhost:8080/api/v1";
+  static const baseUrl =
+      "https://flutter-final-project-tbog.onrender.com/api/v1";
 }
