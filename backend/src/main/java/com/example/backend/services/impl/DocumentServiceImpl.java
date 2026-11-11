@@ -117,6 +117,13 @@ public class DocumentServiceImpl implements DocumentService {
     }
 
     @Transactional (readOnly = true)
+    @Override
+    public Page<DocumentResponseDto> listAll(UUID userId, Pageable pageable){
+        return documentRepository.findByFolderUserIdAndDeletedAtIsNull(userId, pageable)
+            .map(documentMapper::toResponse);
+    }
+
+    @Transactional (readOnly = true)
     @Override 
     public Page<DocumentResponseDto> listTrashed(UUID userId, Pageable pageable){
         return documentRepository.findByFolderUserIdAndDeletedAtIsNotNull(userId, pageable)

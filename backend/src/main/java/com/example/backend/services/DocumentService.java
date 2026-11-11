@@ -14,6 +14,7 @@ public interface DocumentService {
     void deleteForever(UUID userId, UUID docId);
 
     Page<DocumentResponseDto> list(UUID userId,UUID folderId, Pageable pageable);
+    Page<DocumentResponseDto> listAll(UUID userId, Pageable pageable);
     Page<DocumentResponseDto> listTrashed(UUID userId, Pageable pageable);
     DocumentResponseDto get(UUID userId, UUID docId);
 }

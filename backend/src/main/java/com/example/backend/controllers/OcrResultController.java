@@ -14,7 +14,7 @@ import com.example.backend.services.OcrResultService;
 import lombok.RequiredArgsConstructor;
 
 @RestController 
-@RequestMapping ("api/v1/ocr_result")
+@RequestMapping ("/api/v1/ocr_result")
 @RequiredArgsConstructor 
 public class OcrResultController {
     private final OcrResultService ocrResultService;

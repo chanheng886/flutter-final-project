@@ -10,6 +10,7 @@ import com.example.backend.entities.Document;
 public interface DocumentRepository extends JpaRepository<Document, UUID> {
     Optional<Document> findByIdAndFolderUserId(UUID id, UUID userId);
     Page<Document> findByFolderIdAndDeletedAtIsNull(UUID folderId, Pageable pageable);
+    Page<Document> findByFolderUserIdAndDeletedAtIsNull(UUID userId, Pageable pageable);
     Page<Document> findByFolderUserIdAndDeletedAtIsNotNull(UUID userId, Pageable pageable);
     List<Document> findByFolderId(UUID folderId);
     long countByFolderIdAndDeletedAtIsNull(UUID folderId);

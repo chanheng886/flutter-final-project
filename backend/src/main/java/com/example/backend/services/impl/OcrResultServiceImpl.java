@@ -5,6 +5,7 @@ import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -61,9 +62,18 @@ public class OcrResultServiceImpl implements OcrResultService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document is in trashed");
         }
 
-        File imageFile = storageService.load(doc.getImagePath()).toFile();
+        Path resolvedPath = storageService.load(doc.getImagePath());
+        File imageFile = resolvedPath.toFile();
         if (!imageFile.exists() || imageFile.length() == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document image file not found on disk");
+            File fallback = new File(doc.getImagePath());
+            if (fallback.exists() && fallback.length() > 0) {
+                imageFile = fallback;
+            }
+        }
+        if (!imageFile.exists() || imageFile.length() == 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Document image file not found on disk. If the server restarted, please re-upload or scan a new document.");
         }
 
         String tessPath = resolveTessdataPath();

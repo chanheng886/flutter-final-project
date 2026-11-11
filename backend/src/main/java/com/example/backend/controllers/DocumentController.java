@@ -25,11 +25,20 @@ import com.example.backend.services.DocumentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-@RequestMapping ("api/v1/documents")
+@RequestMapping ("/api/v1/documents")
 @RequiredArgsConstructor 
 @RestController 
 public class DocumentController {
     private final DocumentService documentService;
+
+    @GetMapping
+    public ResponseEntity<Page<DocumentResponseDto>> listAllDocuments(
+        @AuthenticationPrincipal User user,
+        Pageable pageable
+    ){
+        Page<DocumentResponseDto> res = documentService.listAll(user.getId(), pageable);
+        return ResponseEntity.ok(res);
+    }
 
     @PostMapping (value = "/folders/{folderId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DocumentResponseDto> uploadImage(

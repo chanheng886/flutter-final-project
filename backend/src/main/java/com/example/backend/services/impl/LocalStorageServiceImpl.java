@@ -32,7 +32,7 @@ public class LocalStorageServiceImpl implements StorageService {
     @Override 
     public void delete(String relativePath){
         try{
-            Files.deleteIfExists(rootDir);
+            Files.deleteIfExists(load(relativePath));
         }catch(IOException e){
             throw new IllegalArgumentException("Could not delete file", e);
         }
