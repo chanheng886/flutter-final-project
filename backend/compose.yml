@@ -3,19 +3,13 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-
     container_name: khmer-ocr-backend
-
     ports:
       - "8080:8080"
-
     env_file:
       - .env
-
     environment:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
-
     volumes:
       - ./uploads:/app/uploads
-
     restart: unless-stopped

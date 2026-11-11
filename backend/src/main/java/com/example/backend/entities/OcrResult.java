@@ -1,6 +1,5 @@
 package com.example.backend.entities;
 
-import java.sql.SQLType;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -8,8 +7,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.OnDelete;
 import org.hibernate.annotations.OnDeleteAction;
 import org.hibernate.type.SqlTypes;
-import org.hibernate.type.format.jakartajson.JsonBJsonFormatMapper;
-import io.swagger.v3.core.util.Json;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -24,9 +21,7 @@ import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 @Table (name = "tb_ocr_result")
 @NoArgsConstructor 

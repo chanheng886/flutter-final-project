@@ -1,10 +1,8 @@
 package com.example.backend.services.impl;
-
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,11 +24,11 @@ import com.example.backend.entities.OcrResult;
 import com.example.backend.mappers.OcrResultMapper;
 import com.example.backend.repositories.DocumentRepository;
 import com.example.backend.repositories.OcrResultRepository;
+import com.example.backend.services.GeminiService;
 import com.example.backend.services.OcrResultService;
 import com.example.backend.services.StorageService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import lombok.RequiredArgsConstructor;
 import net.sourceforge.tess4j.ITessAPI;
 import net.sourceforge.tess4j.Tesseract;
@@ -41,12 +39,12 @@ import net.sourceforge.tess4j.Word;
 @RequiredArgsConstructor
 public class OcrResultServiceImpl implements OcrResultService {
     private static final Logger log = LoggerFactory.getLogger(OcrResultServiceImpl.class);
-
     private final OcrResultRepository ocrResultRepository;
     private final OcrResultMapper ocrResultMapper;
     private final DocumentRepository documentRepository;
     private final ObjectMapper objectMapper;
     private final StorageService storageService;
+    private final GeminiService geminiService;
 
     // Tesseract native library is not thread-safe: synchronize all native calls
     private static final Object TESS_LOCK = new Object();
@@ -54,7 +52,6 @@ public class OcrResultServiceImpl implements OcrResultService {
     @Value("${app.ocr.tessdata-path}")
     private String configuredTessdataPath;
 
-    @Transactional
     @Override
     public OcrResultResponseDto scan(UUID userId, UUID docId) {
         Document doc = findOwnDocument(userId, docId);
@@ -124,18 +121,25 @@ public class OcrResultServiceImpl implements OcrResultService {
                 .average()
                 .orElse(0);
 
+        String rawText = text == null ? "" : text.trim();
+
+        // AI correction via Gemini (Khmer OCR text cleanup)
+        long aiStart = System.nanoTime();
+        String corrected = geminiService.correctKhmerText(rawText);
+        int aiLatencyMs = (int) ((System.nanoTime() - aiStart) / 1_000_000);
+
         OcrResult result = ocrResultRepository
                 .findByDocumentIdAndDocumentFolderUserId(docId, userId)
                 .orElseGet(OcrResult::new);
         result.setDocument(doc);
-        result.setRawText(text == null ? "" : text.trim());
-        result.setAiCorrectedText(null);
+        result.setRawText(rawText);
+        result.setAiCorrectedText(corrected);
         result.setBoundingBox(toBoundingBoxJson(words));
         result.setConfidenceScore(confidence);
-        result.setEngineUsed("tesseract");
+        result.setEngineUsed("tesseract+gemini");
         result.setOcrLatencyMs(latencyMs);
         ocrResultRepository.save(result);
-        doc.setContent(result.getRawText());
+        doc.setContent(corrected != null && !corrected.isBlank() ? corrected : rawText);
         return ocrResultMapper.toResponse(result);
     }
 

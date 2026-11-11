@@ -70,11 +70,11 @@ public class FolderController {
         return ResponseEntity.ok(res);
     }
 
-    @GetMapping ("/trash") 
+@GetMapping ("/trash") 
     public ResponseEntity<Page<FolderResponseDto>> getTrashedFolder(@AuthenticationPrincipal User user,@PageableDefault (size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable){
-        Page<FolderResponseDto> res = folderService.list(user.getId(), pageable);
+        Page<FolderResponseDto> res = folderService.listTrash(user.getId(), pageable);
         return ResponseEntity.ok(res);
-    } 
+    }
 
     @GetMapping ("/{folderId}")
     public ResponseEntity<FolderResponseDto> getFolder(@AuthenticationPrincipal User user, @PathVariable UUID folderId){

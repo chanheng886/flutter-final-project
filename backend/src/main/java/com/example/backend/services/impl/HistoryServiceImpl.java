@@ -1,16 +1,9 @@
 package com.example.backend.services.impl;
-
-import java.util.Optional;
 import java.util.UUID;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.server.ResponseStatusException;
-
 import com.example.backend.dtos.responses.HistoryResponseDto;
 import com.example.backend.entities.Document;
 import com.example.backend.entities.Folder;
@@ -21,7 +14,6 @@ import com.example.backend.mappers.HistoryMapper;
 import com.example.backend.repositories.HistoryRepository;
 import com.example.backend.repositories.UserRepository;
 import com.example.backend.services.HistoryService;
-
 import lombok.RequiredArgsConstructor;
 
 @Service 

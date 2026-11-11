@@ -1,6 +1,7 @@
 package com.example.backend.config;
-
 import java.net.URI;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +39,20 @@ public class DataSourceConfig {
 
         String trimmed = rawUrl.trim();
         if (trimmed.startsWith("jdbc:")) {
-            jdbcUrl = trimmed;
+            // Strip inline credentials (user:password@host) — JDBC driver rejects them
+            String stripped = stripInlineCredentials(trimmed, username, password);
+            if (stripped != null) {
+                String[] parts = stripped.split(":", 3);
+                if (parts.length >= 3) {
+                    username = parts[0];
+                    password = parts[1];
+                    jdbcUrl = parts[2];
+                } else {
+                    jdbcUrl = stripped;
+                }
+            } else {
+                jdbcUrl = trimmed;
+            }
         } else if (trimmed.startsWith("postgres://") || trimmed.startsWith("postgresql://")) {
             try {
                 String dummy = trimmed.replaceFirst("^postgres(ql)?://", "http://");
@@ -67,6 +81,8 @@ public class DataSourceConfig {
             jdbcUrl = "jdbc:" + trimmed;
         }
 
+        jdbcUrl = stripUnsupportedParams(jdbcUrl);
+
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(jdbcUrl);
         if (username != null && !username.isBlank()) {
@@ -76,12 +92,86 @@ public class DataSourceConfig {
             config.setPassword(password);
         }
         config.setDriverClassName("org.postgresql.Driver");
-        config.setConnectionTimeout(30000);
+        config.setConnectionTimeout(60000);
         config.setMaximumPoolSize(5);
-        config.setMinimumIdle(1);
+        config.setMinimumIdle(0);
         config.setIdleTimeout(300000);
-        config.setMaxLifetime(900000);
+        config.setMaxLifetime(600000);
+        config.setLeakDetectionThreshold(120000);
+        config.setValidationTimeout(30000);
 
-        return new HikariDataSource(config);
+        // Neon pooler sometimes drops connections during Hikari's fail-fast
+        // check at bean construction time. Retry a few times before giving up
+        // so a transient drop doesn't crash the application context.
+        int maxAttempts = 5;
+        int attempt = 0;
+        while (true) {
+            attempt++;
+            try {
+                return new HikariDataSource(config);
+            } catch (Exception e) {
+                if (attempt >= maxAttempts) {
+                    log.error("Failed to create DataSource after {} attempts", attempt, e);
+                    throw e;
+                }
+                log.warn("DataSource creation failed (attempt {}/{}): {} — retrying in 3s",
+                        attempt, maxAttempts, e.getMessage());
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("Interrupted while retrying DataSource creation", ie);
+                }
+            }
+        }
+    }
+
+    /**
+     * Strips inline credentials from a jdbc:postgresql://user:password@host URL.
+     * Returns "user:password:jdbc:postgresql://host..." or null if no inline creds found.
+     */
+    private String stripInlineCredentials(String url, String fallbackUser, String fallbackPassword) {
+        Pattern p = Pattern.compile(
+                "^(jdbc:postgresql://)([^:/@]+):([^@]+)@(.*)$",
+                Pattern.CASE_INSENSITIVE);
+        Matcher m = p.matcher(url);
+        if (!m.matches()) {
+            return null;
+        }
+        String prefix = m.group(1);
+        String user = m.group(2);
+        String pass = m.group(3);
+        String rest = m.group(4);
+        return user + ":" + pass + ":" + prefix + rest;
+    }
+
+    /**
+     * Removes query params the PostgreSQL JDBC driver does not understand
+     * (e.g. channel_binding). Keeps sslmode and standard params.
+     */
+    private String stripUnsupportedParams(String jdbcUrl) {
+        if (!jdbcUrl.contains("?")) {
+            return jdbcUrl;
+        }
+        int q = jdbcUrl.indexOf('?');
+        String base = jdbcUrl.substring(0, q);
+        String query = jdbcUrl.substring(q + 1);
+
+        StringBuilder kept = new StringBuilder();
+        for (String pair : query.split("&")) {
+            String[] kv = pair.split("=", 2);
+            String key = kv[0].toLowerCase();
+            if (key.equals("channel_binding") || key.equals("ssloptions") || key.equals("sslcrldirs")) {
+                continue;
+            }
+            if (kept.length() > 0) kept.append("&");
+            kept.append(pair);
+        }
+        String result = base;
+        if (kept.length() > 0) result += "?" + kept;
+        if (!result.equals(jdbcUrl)) {
+            log.info("Stripped unsupported JDBC params from URL");
+        }
+        return result;
     }
 }
