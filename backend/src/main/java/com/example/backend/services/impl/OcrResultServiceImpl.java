@@ -59,25 +59,32 @@ public class OcrResultServiceImpl implements OcrResultService {
 
         File imageFile = storageService.load(doc.getImagePath()).toFile();
 
-        // Normalise the image to a plain RGB BufferedImage so Tesseract's
-        // native lib never sees CMYK, 16-bit, indexed, or null colour models.
-        BufferedImage safeImage = toSafeRgbImage(imageFile);
-
         long start = System.nanoTime();
         String text;
         List<Word> words;
 
-        // Single global lock prevents concurrent native Tesseract calls
         synchronized (TESS_LOCK) {
             Tesseract tesseract = new Tesseract();
             tesseract.setDatapath(tessdatePath);
             tesseract.setLanguage(toTessLang(doc.getLanguage()));
-            // Keep one API instance for both calls so internal state is consistent
+
             try {
-                text = tesseract.doOCR(safeImage);
-                words = tesseract.getWords(safeImage, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+                // Use File overload — Tesseract's leptonica library handles JPEG,
+                // PNG, TIFF, WebP and CMYK natively, bypassing Java ImageIO limits.
+                text = tesseract.doOCR(imageFile);
+
+                // Try to get word-level bounding boxes via BufferedImage.
+                // If ImageIO can't decode the format (e.g. CMYK JPEG), gracefully
+                // fall back to an empty list so OCR text is still returned.
+                BufferedImage img = readSafe(imageFile);
+                if (img != null) {
+                    words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+                } else {
+                    words = List.of();
+                }
             } catch (TesseractException e) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "OCR failed: " + e.getMessage(), e);
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR, "OCR failed: " + e.getMessage(), e);
             }
         }
 
@@ -114,45 +121,38 @@ public class OcrResultServiceImpl implements OcrResultService {
     // ── helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * Converts any image file into a stable {@link BufferedImage#TYPE_INT_RGB}
-     * image that Tesseract's native lib can always handle safely.
-     * <p>
-     * Handles: CMYK JPEG, 16-bit PNG, greyscale, indexed colour, and cases
-     * where {@link ImageIO#read} returns {@code null} for unsupported formats.
+     * Tries to read the image with ImageIO and normalise it to plain RGB.
+     * Returns {@code null} (never throws) if the format is unsupported —
+     * callers should handle the null case gracefully.
      */
-    private BufferedImage toSafeRgbImage(File imageFile) {
-        BufferedImage src;
+    private BufferedImage readSafe(File imageFile) {
         try {
-            src = ImageIO.read(imageFile);
+            BufferedImage src = ImageIO.read(imageFile);
+            if (src == null) return null;
+
+            // Already plain RGB — no conversion needed
+            if (src.getType() == BufferedImage.TYPE_INT_RGB) return src;
+
+            // Redraw on a fresh RGB canvas (handles alpha, indexed, 16-bit, etc.)
+            BufferedImage rgb = new BufferedImage(
+                    src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = rgb.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g.setColor(java.awt.Color.WHITE);
+            g.fillRect(0, 0, src.getWidth(), src.getHeight());
+            g.drawImage(src, 0, 0, null);
+            g.dispose();
+            return rgb;
         } catch (IOException e) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_ENTITY, "Cannot read image file: " + e.getMessage(), e);
+            return null;
         }
-        if (src == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNPROCESSABLE_ENTITY, "Unsupported or corrupt image format");
-        }
-
-        // If it is already a plain RGB image there is nothing to do
-        if (src.getType() == BufferedImage.TYPE_INT_RGB) {
-            return src;
-        }
-
-        // Redraw onto a fresh RGB canvas — this resolves CMYK, alpha, 16-bit, etc.
-        BufferedImage rgb = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
-        Graphics2D g = rgb.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        // Fill white background (handles transparent PNGs cleanly)
-        g.setColor(java.awt.Color.WHITE);
-        g.fillRect(0, 0, src.getWidth(), src.getHeight());
-        g.drawImage(src, 0, 0, null);
-        g.dispose();
-        return rgb;
     }
 
-    private final Document findOwnDocument(UUID userId, UUID docId) {
+    private Document findOwnDocument(UUID userId, UUID docId) {
         return documentRepository.findByIdAndFolderUserId(docId, userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document is not found!"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Document is not found!"));
     }
 
     private String toTessLang(String language) {
@@ -160,7 +160,8 @@ public class OcrResultServiceImpl implements OcrResultService {
             case "km" -> "khm";
             case "en" -> "eng";
             case "km+en" -> "khm+eng";
-            default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported language");
+            default -> throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Unsupported language");
         };
     }
 

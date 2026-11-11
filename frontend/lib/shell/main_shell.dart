@@ -23,9 +23,8 @@ class _MainShellState extends State<MainShell> {
   ];
 
   void _openScan() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ScanPage()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ScanPage()));
   }
 
   @override
