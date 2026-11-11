@@ -84,28 +84,37 @@ public class OcrResultServiceImpl implements OcrResultService {
         String text;
         List<Word> words = List.of();
 
-        synchronized (TESS_LOCK) {
-            Tesseract tesseract = new Tesseract();
-            tesseract.setDatapath(tessPath);
-            tesseract.setLanguage(lang);
+        File ocrInputFile = prepareImageForOcr(imageFile);
+        File tempToDelete = (ocrInputFile != imageFile) ? ocrInputFile : null;
 
-            try {
-                // OCR via File directly: Leptonica decodes images natively with zero Java ImageIO issues
-                text = tesseract.doOCR(imageFile);
+        try {
+            synchronized (TESS_LOCK) {
+                Tesseract tesseract = new Tesseract();
+                tesseract.setDatapath(tessPath);
+                tesseract.setLanguage(lang);
 
-                // Word-level bounding boxes (optional - gracefully fallback to empty if decode fails)
                 try {
-                    BufferedImage img = readSafe(imageFile);
-                    if (img != null) {
-                        words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+                    // OCR via File directly: Leptonica decodes images natively with zero Java ImageIO issues
+                    text = tesseract.doOCR(ocrInputFile);
+
+                    // Word-level bounding boxes (optional - gracefully fallback to empty if decode fails)
+                    try {
+                        BufferedImage img = readSafe(ocrInputFile);
+                        if (img != null) {
+                            words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+                        }
+                    } catch (Throwable t) {
+                        log.warn("Bounding box calculation skipped: {}", t.getMessage());
                     }
-                } catch (Throwable t) {
-                    log.warn("Bounding box calculation skipped: {}", t.getMessage());
+                } catch (TesseractException e) {
+                    log.error("Tesseract scan failed: {}", e.getMessage(), e);
+                    throw new ResponseStatusException(
+                            HttpStatus.INTERNAL_SERVER_ERROR, "OCR failed: " + e.getMessage(), e);
                 }
-            } catch (TesseractException e) {
-                log.error("Tesseract scan failed: {}", e.getMessage(), e);
-                throw new ResponseStatusException(
-                        HttpStatus.INTERNAL_SERVER_ERROR, "OCR failed: " + e.getMessage(), e);
+            }
+        } finally {
+            if (tempToDelete != null && tempToDelete.exists()) {
+                tempToDelete.delete();
             }
         }
 
@@ -171,6 +180,41 @@ public class OcrResultServiceImpl implements OcrResultService {
             }
         }
         return configuredTessdataPath != null ? configuredTessdataPath : "/usr/share/tessdata";
+    }
+
+    private File prepareImageForOcr(File originalFile) {
+        try {
+            BufferedImage src = ImageIO.read(originalFile);
+            if (src == null) return originalFile;
+
+            int w = src.getWidth();
+            int h = src.getHeight();
+            int maxDim = 1800;
+            if (w <= maxDim && h <= maxDim) {
+                return originalFile;
+            }
+
+            double scale = (double) maxDim / Math.max(w, h);
+            int newW = (int) Math.round(w * scale);
+            int newH = (int) Math.round(h * scale);
+
+            BufferedImage resized = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = resized.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setColor(java.awt.Color.WHITE);
+            g.fillRect(0, 0, newW, newH);
+            g.drawImage(src, 0, 0, newW, newH, null);
+            g.dispose();
+
+            File tempFile = File.createTempFile("ocr_opt_", ".jpg");
+            tempFile.deleteOnExit();
+            ImageIO.write(resized, "jpg", tempFile);
+            log.info("Optimized image for OCR from {}x{} to {}x{}", w, h, newW, newH);
+            return tempFile;
+        } catch (Throwable t) {
+            log.warn("Image pre-processing optimization skipped: {}", t.getMessage());
+            return originalFile;
+        }
     }
 
     private BufferedImage readSafe(File imageFile) {

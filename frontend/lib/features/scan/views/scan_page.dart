@@ -39,7 +39,9 @@ class _ScanPageState extends State<ScanPage> {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 90,
+      imageQuality: 85,
+      maxWidth: 1800,
+      maxHeight: 1800,
       preferredCameraDevice: CameraDevice.rear,
     );
     if (picked == null) {

@@ -35,7 +35,7 @@ class ApiClient {
     try {
       final res = await http
           .get(_uri(path), headers: await _headers(auth))
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 90));
       return _handle(res);
     } on ApiException {
       rethrow;
@@ -56,7 +56,7 @@ class ApiClient {
             headers: await _headers(auth),
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 120));
+          .timeout(const Duration(seconds: 180));
       return _handle(res);
     } on ApiException {
       rethrow;
@@ -79,7 +79,7 @@ class ApiClient {
             headers: await _headers(auth),
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 60));
       return _handle(res);
     } on ApiException {
       rethrow;
@@ -92,7 +92,7 @@ class ApiClient {
     try {
       final res = await http
           .delete(_uri(path), headers: await _headers(auth))
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 60));
       return _handle(res);
     } on ApiException {
       rethrow;
@@ -113,7 +113,7 @@ class ApiClient {
       req.fields.addAll(fields);
       req.files.add(await http.MultipartFile.fromPath('file', filePath));
 
-      final streamed = await req.send().timeout(const Duration(seconds: 90));
+      final streamed = await req.send().timeout(const Duration(seconds: 120));
       final res = await http.Response.fromStream(streamed);
       return _handle(res);
     } on ApiException {
@@ -129,7 +129,7 @@ class ApiClient {
     try {
       final res = await http
           .get(_uri(path), headers: await _headers(auth, json: false))
-          .timeout(const Duration(seconds: 60));
+          .timeout(const Duration(seconds: 90));
       if (res.statusCode >= 200 && res.statusCode < 300) {
         return res.bodyBytes;
       }
