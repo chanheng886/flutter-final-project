@@ -63,8 +63,13 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       }
     } catch (e) {
       if (mounted) {
+        // A 404 / "not found" simply means the document has not been scanned yet.
+        // It is not an application error.
+        final msg = e.toString().toLowerCase();
+        final isNotFound = msg.contains('not found') || msg.contains('404');
         setState(() {
-          _error = e.toString();
+          _ocrResult = null;
+          _error = isNotFound ? null : e.toString();
           _loading = false;
         });
       }
