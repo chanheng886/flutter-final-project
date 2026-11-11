@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:frontend/features/folder/views/folders_page.dart';
 import 'package:frontend/features/home/views/home_page.dart';
 import 'package:frontend/features/recent/views/recent_page.dart';
+import 'package:frontend/features/scan/views/scan_page.dart';
 import 'package:frontend/features/setting/views/setting_page.dart';
 import 'package:frontend/shell/widgets/app_bottom_nav.dart';
 
@@ -20,6 +21,13 @@ class _MainShellState extends State<MainShell> {
     RecentPage(),
     SettingPage(),
   ];
+
+  void _openScan() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ScanPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,7 +35,7 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: AppBottomNav(
         currentIndex: _index,
         onTap: (value) => setState(() => _index = value),
-        onScan: () {},
+        onScan: _openScan,
       ),
     );
   }
