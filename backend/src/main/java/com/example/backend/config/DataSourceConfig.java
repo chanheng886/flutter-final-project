@@ -15,13 +15,13 @@ import com.zaxxer.hikari.HikariDataSource;
 public class DataSourceConfig {
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
 
-    @Value("${spring.datasource.url:${DATABASE_URL:}}")
+    @Value("${spring.datasource.url:${SPRING_DATASOURCE_URL:${DATABASE_URL:}}}")
     private String rawUrl;
 
-    @Value("${spring.datasource.username:}")
+    @Value("${spring.datasource.username:${SPRING_DATASOURCE_USERNAME:}}")
     private String defaultUser;
 
-    @Value("${spring.datasource.password:}")
+    @Value("${spring.datasource.password:${SPRING_DATASOURCE_PASSWORD:}}")
     private String defaultPassword;
 
     @Bean
