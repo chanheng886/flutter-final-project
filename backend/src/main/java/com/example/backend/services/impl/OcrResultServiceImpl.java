@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.UUID;
 import java.awt.Rectangle;
 import javax.imageio.ImageIO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -37,17 +39,19 @@ import net.sourceforge.tess4j.Word;
 @Service
 @RequiredArgsConstructor
 public class OcrResultServiceImpl implements OcrResultService {
+    private static final Logger log = LoggerFactory.getLogger(OcrResultServiceImpl.class);
+
     private final OcrResultRepository ocrResultRepository;
     private final OcrResultMapper ocrResultMapper;
     private final DocumentRepository documentRepository;
     private final ObjectMapper objectMapper;
     private final StorageService storageService;
 
-    // Tesseract is NOT thread-safe — all native calls must be serialised
+    // Tesseract native library is not thread-safe: synchronize all native calls
     private static final Object TESS_LOCK = new Object();
 
     @Value("${app.ocr.tessdata-path}")
-    private String tessdatePath;
+    private String configuredTessdataPath;
 
     @Transactional
     @Override
@@ -58,31 +62,38 @@ public class OcrResultServiceImpl implements OcrResultService {
         }
 
         File imageFile = storageService.load(doc.getImagePath()).toFile();
+        if (!imageFile.exists() || imageFile.length() == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document image file not found on disk");
+        }
+
+        String tessPath = resolveTessdataPath();
+        String lang = toTessLang(doc.getLanguage());
+        log.info("Starting OCR scan for docId={} using tessdata={} and lang={}", docId, tessPath, lang);
 
         long start = System.nanoTime();
         String text;
-        List<Word> words;
+        List<Word> words = List.of();
 
         synchronized (TESS_LOCK) {
             Tesseract tesseract = new Tesseract();
-            tesseract.setDatapath(tessdatePath);
-            tesseract.setLanguage(toTessLang(doc.getLanguage()));
+            tesseract.setDatapath(tessPath);
+            tesseract.setLanguage(lang);
 
             try {
-                // Use File overload — Tesseract's leptonica library handles JPEG,
-                // PNG, TIFF, WebP and CMYK natively, bypassing Java ImageIO limits.
+                // OCR via File directly: Leptonica decodes images natively with zero Java ImageIO issues
                 text = tesseract.doOCR(imageFile);
 
-                // Try to get word-level bounding boxes via BufferedImage.
-                // If ImageIO can't decode the format (e.g. CMYK JPEG), gracefully
-                // fall back to an empty list so OCR text is still returned.
-                BufferedImage img = readSafe(imageFile);
-                if (img != null) {
-                    words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
-                } else {
-                    words = List.of();
+                // Word-level bounding boxes (optional - gracefully fallback to empty if decode fails)
+                try {
+                    BufferedImage img = readSafe(imageFile);
+                    if (img != null) {
+                        words = tesseract.getWords(img, ITessAPI.TessPageIteratorLevel.RIL_WORD);
+                    }
+                } catch (Throwable t) {
+                    log.warn("Bounding box calculation skipped: {}", t.getMessage());
                 }
             } catch (TesseractException e) {
+                log.error("Tesseract scan failed: {}", e.getMessage(), e);
                 throw new ResponseStatusException(
                         HttpStatus.INTERNAL_SERVER_ERROR, "OCR failed: " + e.getMessage(), e);
             }
@@ -121,19 +132,44 @@ public class OcrResultServiceImpl implements OcrResultService {
     // ── helpers ────────────────────────────────────────────────────────────────
 
     /**
-     * Tries to read the image with ImageIO and normalise it to plain RGB.
-     * Returns {@code null} (never throws) if the format is unsupported —
-     * callers should handle the null case gracefully.
+     * Dynamically finds the valid tessdata directory containing .traineddata files.
+     * Searches configured path, environment variable, and standard Linux / Docker paths.
      */
+    private String resolveTessdataPath() {
+        String envPrefix = System.getenv("TESSDATA_PREFIX");
+        List<String> candidates = new ArrayList<>();
+        if (envPrefix != null && !envPrefix.isBlank()) {
+            candidates.add(envPrefix);
+        }
+        if (configuredTessdataPath != null && !configuredTessdataPath.isBlank()) {
+            candidates.add(configuredTessdataPath);
+        }
+        // Standard Linux paths across Ubuntu 20.04, 22.04 (Jammy/Docker), 24.04, Debian
+        candidates.add("/usr/share/tesseract-ocr/4.00/tessdata");
+        candidates.add("/usr/share/tesseract-ocr/5/tessdata");
+        candidates.add("/usr/share/tessdata");
+        candidates.add("/usr/local/share/tessdata");
+
+        for (String path : candidates) {
+            File dir = new File(path);
+            if (dir.exists() && dir.isDirectory()) {
+                File khm = new File(dir, "khm.traineddata");
+                File eng = new File(dir, "eng.traineddata");
+                if (khm.exists() || eng.exists()) {
+                    return dir.getAbsolutePath();
+                }
+            }
+        }
+        return configuredTessdataPath != null ? configuredTessdataPath : "/usr/share/tessdata";
+    }
+
     private BufferedImage readSafe(File imageFile) {
         try {
             BufferedImage src = ImageIO.read(imageFile);
             if (src == null) return null;
 
-            // Already plain RGB — no conversion needed
             if (src.getType() == BufferedImage.TYPE_INT_RGB) return src;
 
-            // Redraw on a fresh RGB canvas (handles alpha, indexed, 16-bit, etc.)
             BufferedImage rgb = new BufferedImage(
                     src.getWidth(), src.getHeight(), BufferedImage.TYPE_INT_RGB);
             Graphics2D g = rgb.createGraphics();
@@ -144,7 +180,7 @@ public class OcrResultServiceImpl implements OcrResultService {
             g.drawImage(src, 0, 0, null);
             g.dispose();
             return rgb;
-        } catch (IOException e) {
+        } catch (Throwable e) {
             return null;
         }
     }

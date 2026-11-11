@@ -33,10 +33,13 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-khm \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/share/tesseract-ocr/5 \
+    && (ln -s /usr/share/tesseract-ocr/4.00/tessdata /usr/share/tesseract-ocr/5/tessdata 2>/dev/null || true) \
+    && (ln -s /usr/share/tessdata /usr/share/tesseract-ocr/5/tessdata 2>/dev/null || true)
 
 # Configure Tesseract
-ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
 
 # Create upload directory
 RUN mkdir -p /app/uploads
