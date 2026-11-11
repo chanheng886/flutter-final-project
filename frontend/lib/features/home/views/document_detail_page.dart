@@ -8,6 +8,7 @@ import 'package:frontend/core/widgets/header.dart';
 import 'package:frontend/features/home/models/document_model.dart';
 import 'package:frontend/features/home/models/ocr_result_model.dart';
 import 'package:frontend/features/home/providers/workspace_provider.dart';
+import 'package:frontend/features/scan/views/scan_page.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
@@ -232,9 +233,29 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFFECACA)),
                       ),
-                      child: Text(
-                        _error!,
-                        style: const TextStyle(color: Color(0xFFB91C1C)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _error!.replaceAll('ApiException: ', ''),
+                            style: const TextStyle(color: Color(0xFFB91C1C)),
+                          ),
+                          if (_error!.contains('not found on disk') ||
+                              _error!.contains('restarted')) ...[
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(
+                                    builder: (_) => const ScanPage(),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.camera_alt, size: 16),
+                              label: const Text('Scan New Document'),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ],
